@@ -37,14 +37,3 @@ jobs:
 
           # 実行したいテストの種類を指定できる
           # 指定可能な値は All, PlayMode, EditMode
-          # testMode: All
-
-          # テスト実行時に利用したい Docker イメージを明示的に指定できる
-          # customImage: 'unityci/editor:2020.1.14f1-base-0'
-
-      # テストの実行結果をアーティファクトにアップロードしてダウンロードして参照できるようにする
-      - uses: actions/upload-artifact@v2
-        if: always()
-        with:
-          name: Test results
-          path: artifacts
