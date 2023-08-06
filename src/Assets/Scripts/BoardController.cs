@@ -26,6 +26,8 @@ public class BoardController : MonoBehaviour
     int[,] _board = new int[BOARD_HEIGHT, BOARD_WIDTH];
     GameObject[,] _Puyos = new GameObject[BOARD_HEIGHT, BOARD_WIDTH];
 
+    uint _addictiveScore = 0;
+
     // 落ちる際の一時的変数
     List<FallData> _falls = new();
     int _fallFrames = 0;
@@ -151,14 +153,36 @@ public class BoardController : MonoBehaviour
         return _falls.Count != 0;
     }
 
+    // ボーナス計算用のテーブル
+    static readonly uint[] chainBonusTbl = new uint[]
+    {
+        0, 8, 16, 32, 64,
+        96, 128, 160, 192, 224,
+        256, 288, 320, 352, 384,
+        416, 448, 480, 512
+    };
+
+    static readonly uint[] connectBonusTbl = new uint[]
+    {
+        0, 0, 0, 0, 0, 2, 3, 4, 5, 6, 7,
+    };
+
+    static readonly uint[] colorBonusTbl = new uint[]
+    {
+        0, 3, 6, 12, 24,
+    };
     static readonly Vector2Int[] search_tbl = new Vector2Int[] { Vector2Int.up, Vector2Int.right, Vector2Int.down, Vector2Int.left };
     // 消えるぷよを検索する（同じ色を上下左右に見つけていく。見つかったらフラグを立てて再計算しない）
-    public bool CheckErase()
+    public bool CheckErase(int chainCount)
     {
         _eraseFrames = 0;
         _erases.Clear();
 
         uint[] isChecked = new uint[BOARD_HEIGHT];// ビット処理
+
+        int puyoCount = 0;
+        uint colorBits = 0;
+        uint connectBonus = 0;
 
         List<Vector2Int> add_list = new();
         for(int y = 0; y < BOARD_HEIGHT; y++)
@@ -171,6 +195,8 @@ public class BoardController : MonoBehaviour
 
                 int type = _board[y, x];
                 if (type == 0) continue;// 空間だった
+
+                puyoCount++;
 
                 System.Action<Vector2Int> get_connection = null;// 再帰で使う場合に必要
                 get_connection = (pos) =>
@@ -195,11 +221,28 @@ public class BoardController : MonoBehaviour
 
                 if(4 <= add_list.Count)
                 {
+                    connectBonus += connectBonusTbl[System.Math.Min(add_list.Count, connectBonusTbl.Length - 1)];
+                    colorBits |= (1u << type);
                     _erases.AddRange(add_list);
                 }
             }
         }
+        if(chainCount != -1)// 初期化時は計算しない
+        {
+            // ボーナス計算
+            uint colorNum = 0;
+            for(; 0 < colorBits; colorBits >>= 1)// 立っているビット数を数える
+            {
+                colorNum += (colorBits & 1u);
+            }
 
+            uint colorBonus = colorBonusTbl[System.Math.Min(colorNum, colorBonusTbl.Length - 1)];
+            uint chainBonus = chainBonusTbl[System.Math.Min(chainCount, chainBonusTbl.Length - 1)];
+            uint bonus = System.Math.Max(1, chainBonus + connectBonus + colorBonus);// 0の時も1入る
+            _addictiveScore += 10 * (uint)_erases.Count * bonus;
+
+            if (puyoCount == 0) _addictiveScore += 1800;// 全消しボーナス
+        }
         return _erases.Count != 0;
     }
 
@@ -232,5 +275,13 @@ public class BoardController : MonoBehaviour
         }
 
         return true;
+    }
+
+    public uint popScore()
+    {
+        uint score = _addictiveScore;
+        _addictiveScore = 0;
+
+        return score;
     }
 }

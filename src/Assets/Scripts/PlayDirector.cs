@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Playables;
@@ -13,6 +14,7 @@ interface IState
         GameOver = 1,
         Falling = 2,
         Erasing = 3,
+        Waiting = 4,
 
         Max,
 
@@ -25,12 +27,18 @@ interface IState
 [RequireComponent(typeof(BoardController))]
 public class PlayDirector : MonoBehaviour
 {
+    bool _canSpawn = false;
     [SerializeField] GameObject player = default!;
     PlayerController _playerController = null;
     LogicalInput _logicalInput = new();
     BoardController _boardController = default!;
     NextQueue _nextQueue = new();
     [SerializeField] PuyoPair[] nextPuyoPairs = { default!, default! };// 次nextのゲームオブジェクトの制御
+
+    //得点
+    [SerializeField] TextMeshProUGUI textScore = default!;
+    uint _score = 0;
+    int _chainCount = -1;// 連鎖数（得点計算に必要）-1は初期化用
     // 状態管理
         IState.E_State _current_state = IState.E_State.Falling;
         static readonly IState[] states = new IState[(int)IState.E_State.Max] {
@@ -38,6 +46,7 @@ public class PlayDirector : MonoBehaviour
             new GameOverState(),
             new FallingState(),
             new ErasingState(),
+            new WaitingState(),
         };
     // Start is called before the first frame update
     void Start()
@@ -46,9 +55,13 @@ public class PlayDirector : MonoBehaviour
         _boardController = GetComponent<BoardController>();
         _logicalInput.Clear();
         _playerController.SetLogicalInput(_logicalInput);
+
         _nextQueue.Initialize();
+        UpdateNextsView();
         // 状態の初期化
         InitializeState();
+
+        SetScore(0);
     }
 
     void UpdateNextsView()
@@ -59,21 +72,7 @@ public class PlayDirector : MonoBehaviour
         });
     }
 
-    // Update is called once per frame
-    void FixedUpdate()
-    {
-        // 入力を取り込む
-        UpdateInput();
-
-        UpdateState();
-
-        if (!player.activeSelf)
-        {
-            Spawn(_nextQueue.Update());
-        }
-    }
-
-    bool Spawn(Vector2Int next) => _playerController.Spawn((PuyoType)next[0], (PuyoType)next[1]);
+ 
 
     static readonly KeyCode[] key_code_tbl = new KeyCode[(int)LogicalInput.Key.Max]
 {
@@ -101,6 +100,16 @@ public class PlayDirector : MonoBehaviour
 
         _logicalInput.Update(inputDev);
     }
+
+    class WaitingState : IState
+    {
+        public IState.E_State Initialize(PlayDirector parent) { return IState.E_State.Unchanged; }
+        public IState.E_State Update(PlayDirector parent)
+        {
+            return parent._canSpawn ? IState.E_State.Control : IState.E_State.Unchanged;
+        }
+    }
+
     class ControlState : IState
     {
         public IState.E_State Initialize(PlayDirector parent)
@@ -135,7 +144,12 @@ public class PlayDirector : MonoBehaviour
     {
         public IState.E_State Initialize(PlayDirector parent)
         {
-            return parent._boardController.CheckErase() ? IState.E_State.Unchanged : IState.E_State.Control;
+            if(parent._boardController.CheckErase(parent._chainCount++))
+            {
+                return IState.E_State.Unchanged;// 消すアニメーションに突入
+            }
+            parent._chainCount = 0;// 連鎖が途切れた
+            return parent._canSpawn ? IState.E_State.Control : IState.E_State.Waiting;// 消すものはない
         }
         public IState.E_State Update(PlayDirector parent)
         {
@@ -176,6 +190,39 @@ public class PlayDirector : MonoBehaviour
             _current_state = next_state;
             InitializeState();
         }
+    }
+
+   // Update is called once per frame
+    void FixedUpdate()
+    {
+        // 入力を取り込む
+        UpdateInput();
+
+        UpdateState();
+
+        AddScore(_playerController.popScore());
+        AddScore(_boardController.popScore());
+    }
+
+    bool Spawn(Vector2Int next) => _playerController.Spawn((PuyoType)next[0], (PuyoType)next[1]);
+
+    void SetScore(uint score)
+    {
+        _score = score;
+        textScore.text = score.ToString();
+    }
+    void AddScore(uint score)
+    {
+        if (0 < score) SetScore(_score + score);
+    }
+
+    public void EnableSpawn(bool enable)
+    {
+        _canSpawn = enable;
+    }
+    public bool IsGameOver()
+    {
+        return _current_state == IState.E_State.GameOver;
     }
 }
 

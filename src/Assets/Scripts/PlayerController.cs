@@ -16,6 +16,9 @@ public class PlayerController : MonoBehaviour
     int _fallCount = 0;
     int _groundFrame = GROUND_FRAMES;// 設置時間
 
+    // 得点
+    uint _addictiveScore = 0;
+
     enum RotState
     {
         Up = 0,
@@ -209,6 +212,8 @@ public class PlayerController : MonoBehaviour
             _fallCount += FALL_COUNT_UNIT;
         }
 
+        if (is_fast) _addictiveScore++;// 下に入れて、落ちれるときはボーナス追加
+
         return true;
     }
     void Control()
@@ -278,5 +283,13 @@ public class PlayerController : MonoBehaviour
         theta = theta0 + rate * theta;
 
         return p + new Vector3(Mathf.Sin(theta), Mathf.Cos(theta), 0.0f);
+    }
+
+    public uint popScore()
+    {
+        uint score = _addictiveScore;
+        _addictiveScore = 0;
+
+        return score;
     }
 }
